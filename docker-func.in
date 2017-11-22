@@ -1,0 +1,71 @@
+# services
+declare -A p_start
+declare -A p_pid
+
+# services order
+services=()
+before_service_start_hooks=()
+after_service_start_hooks=()
+
+function stop_ps {
+  # stop services in reverse...
+  for (( i=${#services[@]}-1; i >= 0 ; i-- ))
+  do
+    echo ":: SIGTERM service ${services[$i]} ..."
+    ${p_pid[${services[$i]}]}
+  done
+  echo -n ":: Shuting down container "
+  for i in {1..3}
+  do
+    echo -n "."
+    sleep 1
+  done
+  echo ""
+}
+
+function start_services {
+  echo ":: Number of services: ${#services[@]}"
+  # start services
+  for s in "${services[@]}"
+  do
+    echo ":: Starting service: ${s} ... "
+    ${p_start[$s]}
+  done
+}
+
+function call_main_hook {
+# main entrypoint
+# trap handler
+trap "echo \"Trap triggered\";stop_ps;exit 11;" SIGHUP SIGINT SIGQUIT SIGTERM
+
+# load modules
+for m in $(ls -A /docker.init/modules.enabled/)
+do
+  echo ":: Loading $m module..."
+  . /docker.init/modules.enabled/${m}
+done
+
+# call before_service_start_hooks
+for h in "${before_service_start_hooks[@]}"
+do
+  echo ":: Calling $h hook function ..."
+  $h
+done
+
+# start services
+start_services
+
+# call after service start
+for h in "${after_service_start_hooks[@]}"
+do
+  echo ":: Calling $h hook function ..."
+  $h
+done
+
+# read wait
+echo ":: Press any key to stop container..."
+read
+
+# stop services
+stop_ps
+}
